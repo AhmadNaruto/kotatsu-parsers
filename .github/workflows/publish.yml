@@ -42,7 +42,7 @@ jobs:
                 uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
             -   name: Run assemble tasks 🚀
-                run: ./gradlew assemble --rerun-tasks
+                run: ./gradlew assemble copyDependencies --rerun-tasks
 
             -   name: Process library with d8 🚀
                 env:
@@ -50,7 +50,8 @@ jobs:
                 run: |
                     ## Dex classes after build...
                     if [ -f ${{ env.LIB_PATH }} ]; then
-                        d8 --release ${{ env.LIB_PATH }} --output ${{ env.D8_PATH }}
+                        ANDROID_JAR=$(find $ANDROID_HOME/platforms -name "android.jar" | sort -V | tail -n 1)
+                        d8 --release ${{ env.LIB_PATH }} --output ${{ env.D8_PATH }} --lib "$ANDROID_JAR" $(find build/dependencies -name "*.jar" | sed 's/^/--lib /')
                     else
                         echo "ℹ️ Pre-compiled library not found, skipping D8 step..."
                     fi
