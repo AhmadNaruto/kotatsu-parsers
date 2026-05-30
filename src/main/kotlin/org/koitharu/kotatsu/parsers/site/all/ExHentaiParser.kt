@@ -34,7 +34,7 @@ internal class ExHentaiParser(
     context: MangaLoaderContext,
 ) : PagedMangaParser(context, MangaParserSource.EXHENTAI, pageSize = 25), MangaParserAuthProvider, Interceptor {
 
-    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST)
+    override val availableSortOrders: Set<SortOrder> = setOf(SortOrder.NEWEST)
 
     override val configKeyDomain: ConfigKey.Domain
         get() {
@@ -335,7 +335,9 @@ internal class ExHentaiParser(
         return response
     }
 
-    private fun Locale.toLanguagePath() = getDisplayLanguage(Locale.ENGLISH).lowercase()
+    private fun Locale.toLanguagePath() = when (language) {
+        else -> getDisplayLanguage(Locale.ENGLISH).lowercase()
+    }
 
     override suspend fun getUsername(): String {
         val doc = webClient.httpGet("https://forums.$DOMAIN_UNAUTHORIZED/").parseHtml().body()

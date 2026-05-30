@@ -2,35 +2,34 @@ package org.koitharu.kotatsu.parsers.site.all
 
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.coroutineScope
-import okhttp3.Headers
-import okhttp3.Interceptor
-import okhttp3.Response
+import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.TimeUnit
 
+@Broken
 @MangaSourceParser("MANGAPARK", "MangaPark")
 internal class MangaPark(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.MANGAPARK, 36) {
-
-	private val tagsMap = suspendLazy(initializer = ::fetchTags)
+	PagedMangaParser(context, MangaParserSource.MANGAPARK, pageSize = 36) {
 
 	override val configKeyDomain = ConfigKey.Domain(
 		"mangapark.net",
 		"mangapark.com",
 		"mangapark.org",
 		"mangapark.me",
+		"mangapark.io",
 		"mangapark.to",
+		"comicpark.org",
 		"comicpark.to",
+		"readpark.org",
+		"readpark.net",
 		"parkmanga.com",
 		"parkmanga.net",
 		"parkmanga.org",
@@ -42,25 +41,8 @@ internal class MangaPark(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override fun getRequestHeaders(): Headers = super.getRequestHeaders().newBuilder()
-		.add(CommonHeaders.ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-		.add(CommonHeaders.ACCEPT_LANGUAGE, "en-US,en;q=0.9")
-		.add(CommonHeaders.ORIGIN, "https://$domain")
-		.add(CommonHeaders.REFERER, "https://$domain/")
-		.add(CommonHeaders.SEC_FETCH_DEST, "document")
-		.add(CommonHeaders.SEC_FETCH_MODE, "navigate")
-		.add(CommonHeaders.SEC_FETCH_SITE, "same-origin")
-		.add(CommonHeaders.SEC_FETCH_USER, "?1")
-		.add(CommonHeaders.UPGRADE_INSECURE_REQUESTS, "1")
-		.build()
-
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.ALPHABETICAL,
-		SortOrder.POPULARITY,
-		SortOrder.UPDATED,
-		SortOrder.NEWEST,
-		SortOrder.RATING,
-	)
+	override val availableSortOrders: Set<SortOrder> =
+		EnumSet.of(SortOrder.POPULARITY, SortOrder.UPDATED, SortOrder.NEWEST, SortOrder.ALPHABETICAL, SortOrder.RATING)
 
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = MangaListFilterCapabilities(
@@ -195,6 +177,24 @@ internal class MangaPark(context: MangaLoaderContext) :
 		}
 	}
 
+	private val tagsMap = suspendLazy(initializer = ::parseTags)
+
+	private suspend fun parseTags(): Map<String, MangaTag> {
+		val tagElements = webClient.httpGet("https://$domain/search").parseHtml()
+			.select("div.flex-col:contains(Genres) div.whitespace-nowrap")
+		val tagMap = ArrayMap<String, MangaTag>(tagElements.size)
+		for (el in tagElements) {
+			val name = el.selectFirstOrThrow("span.whitespace-nowrap").text().toTitleCase(sourceLocale)
+			if (name.isEmpty()) continue
+			tagMap[name] = MangaTag(
+				title = name,
+				key = el.attr("q:key") ?: continue,
+				source = source,
+			)
+		}
+		return tagMap
+	}
+
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val tagMap = tagsMap.get()
@@ -236,91 +236,6 @@ internal class MangaPark(context: MangaLoaderContext) :
 				)
 			},
 		)
-	}
-
-	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-		val id = chapter.url.removeSuffix('/').substringAfterLast('/').substringBefore('-')
-		val s = doc.selectFirstOrThrow("script:containsData($id)").data()
-		val script = if (s.contains("\"comic-")) {
-			s.substringAfterLast("\"comic-")
-		} else {
-			s.substringAfterLast("\"manga-")
-		}
-
-		return Regex("\"(https?:.+?)\"").findAll(script)
-			.mapIndexedNotNullTo(ArrayList()) { _, it ->
-				val url = it.groupValues.getOrNull(1) ?: return@mapIndexedNotNullTo null
-				if (url.contains(".jpg") || url.contains(".jpeg") || url.contains(".jfif") || url.contains(".pjpeg") ||
-					url.contains(".pjp") || url.contains(".png") || url.contains(".webp") || url.contains(".avif") ||
-					url.contains(".gif")
-				) {
-					MangaPage(
-						id = generateUid(url),
-						url = url,
-						preview = null,
-						source = source,
-					)
-				} else {
-					return@mapIndexedNotNullTo null
-				}
-			}
-	}
-
-	override fun intercept(chain: Interceptor.Chain): Response {
-		val request = chain.request()
-		val response = chain.proceed(request)
-
-		if (response.isSuccessful) {
-			return response
-		}
-
-		val urlString = request.url.toString()
-		response.close()
-
-		if (SERVER_PATTERN.containsMatchIn(urlString)) {
-			for (server in SERVERS) {
-				val newUrl = urlString.replace(SERVER_PATTERN, "https://$server")
-				if (newUrl == urlString) continue
-				val newRequest = request.newBuilder()
-					.url(newUrl)
-					.build()
-
-				try {
-					val newResponse = chain
-						.withConnectTimeout(5, TimeUnit.SECONDS)
-						.withReadTimeout(10, TimeUnit.SECONDS)
-						.proceed(newRequest)
-
-					if (newResponse.isSuccessful) {
-						return newResponse
-					}
-
-					newResponse.close()
-				} catch (_: Exception) {
-					// ignore, try next mirror
-				}
-			}
-		}
-
-		return chain.proceed(request)
-	}
-
-	private suspend fun fetchTags(): Map<String, MangaTag> {
-		val tagElements = webClient.httpGet("https://$domain/search").parseHtml()
-			.select("div.flex-col:contains(Genres) div.whitespace-nowrap")
-		val tagMap = ArrayMap<String, MangaTag>(tagElements.size)
-		for (el in tagElements) {
-			val name = el.selectFirstOrThrow("span.whitespace-nowrap")
-				.text().toTitleCase(sourceLocale)
-			if (name.isEmpty()) continue
-			tagMap[name] = MangaTag(
-				title = name,
-				key = el.attr("q:key"),
-				source = source,
-			)
-		}
-		return tagMap
 	}
 
 	private fun parseChapterDate(dateFormat: DateFormat, date: String?): Long {
@@ -365,15 +280,44 @@ internal class MangaPark(context: MangaLoaderContext) :
 			WordSet("year")
 				.anyWordIn(date) -> cal.apply { add(Calendar.YEAR, -number) }.timeInMillis
 
-			else -> 0L
+			else -> 0
 		}
 	}
 
-	companion object {
-		private val SERVER_PATTERN = Regex("https://s\\d{2}")
-		private val SERVERS = listOf(
-			"s01", "s03", "s04", "s00", "s05",
-			"s06", "s07", "s08", "s09", "s10", "s02"
-		)
+
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+		val id = chapter.url.removeSuffix('/').substringAfterLast('/').substringBefore('-')
+		val s = doc.selectFirstOrThrow("script:containsData($id)").data()
+
+		val script = if (s.contains("\"comic-")) {
+			s.substringAfterLast("\"comic-")
+		} else {
+			s.substringAfterLast("\"manga-")
+		}
+
+		return Regex("\"(https?:.+?)\"")
+			.findAll(script)
+			.mapIndexedNotNullTo(ArrayList()) { i, it ->
+				var url = it.groupValues.getOrNull(1) ?: return@mapIndexedNotNullTo null
+                if (url.indexOf("//s") != -1 && url.indexOf(".") != -1){
+                    var p = url.split("//")[1]
+                    p = p.substring(p.indexOf("/"))
+                    url = "https://$domain$p"
+                }
+				if (url.contains(".jpg") || url.contains(".jpeg") || url.contains(".jfif") || url.contains(".pjpeg") ||
+					url.contains(".pjp") || url.contains(".png") || url.contains(".webp") || url.contains(".avif") ||
+					url.contains(".gif")
+				) {
+					MangaPage(
+						id = generateUid(url),
+						url = url,
+						preview = null,
+						source = source,
+					)
+				} else {
+					return@mapIndexedNotNullTo null
+				}
+			}
 	}
 }

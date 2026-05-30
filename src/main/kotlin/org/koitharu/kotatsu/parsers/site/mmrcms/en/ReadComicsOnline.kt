@@ -9,8 +9,6 @@ import org.koitharu.kotatsu.parsers.site.mmrcms.MmrcmsParser
 @MangaSourceParser("READCOMICSONLINE", "ReadComicsOnline.ru", "en", ContentType.COMICS)
 internal class ReadComicsOnline(context: MangaLoaderContext) :
 	MmrcmsParser(context, MangaParserSource.READCOMICSONLINE, "readcomicsonline.ru") {
-	override val listUrl = "comic-list"
-	override val tagUrl = "comic-list"
 	override val selectState = "dt:contains(Status)"
 	override val selectTag = "dt:contains(Categories)"
 }

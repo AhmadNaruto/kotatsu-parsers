@@ -7,7 +7,7 @@ import org.koitharu.kotatsu.parsers.model.ContentType
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 
-@Broken("Domain has no DNS records — site is gone")
+@Broken
 @MangaSourceParser("PONYMANGA", "PonyManga", "en", ContentType.HENTAI)
 internal class PonyManga(context: MangaLoaderContext) :
 	MadaraParser(context, MangaParserSource.PONYMANGA, "ponymanga.com", 10)

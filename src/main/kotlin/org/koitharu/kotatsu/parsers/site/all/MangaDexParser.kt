@@ -1,5 +1,4 @@
-@file:Suppress("DEPRECATION")
-
+@file:Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
 package org.koitharu.kotatsu.parsers.site.all
 
 import kotlinx.coroutines.Dispatchers
@@ -70,7 +69,6 @@ internal class MangaDexParser(context: MangaLoaderContext) : FlexibleMangaParser
 		SortOrder.RELEVANCE,
 	)
 
-	@Deprecated("Too complex. Use filterCapabilities instead")
 	override val searchQueryCapabilities: MangaSearchQueryCapabilities
 		get() = MangaSearchQueryCapabilities(
 			SearchCapability(
@@ -217,7 +215,6 @@ internal class MangaDexParser(context: MangaLoaderContext) : FlexibleMangaParser
 		}
 	}
 
-	@Deprecated("Too complex. Use getList with filter instead")
 	override suspend fun getList(query: MangaSearchQuery): List<Manga> {
 		val url = buildString {
 			append("https://api.$domain/manga?limit=$PAGE_SIZE&offset=${query.offset}")

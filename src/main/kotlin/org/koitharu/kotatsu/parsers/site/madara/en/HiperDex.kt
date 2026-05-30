@@ -20,8 +20,7 @@ internal class HiperDex(context: MangaLoaderContext) :
 		// Remove ?style=list parameter from chapter URLs
 		val absoluteUrl = chapter.url.toAbsoluteUrl(domain)
 		val cleanUrl = if (absoluteUrl.contains("?style=list")) {
-			absoluteUrl.replace("?style=list", "")
-				.replace("&style=list", "")
+			absoluteUrl.replace("?style=list", "").replace("&style=list", "")
 		} else {
 			absoluteUrl
 		}

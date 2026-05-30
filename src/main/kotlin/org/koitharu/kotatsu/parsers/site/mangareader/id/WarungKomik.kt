@@ -7,7 +7,7 @@ import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.mangareader.MangaReaderParser
 
-@Broken("Blocked by Cloudflare challenge")
+@Broken
 @MangaSourceParser("WARUNGKOMIK", "WarungKomik", "id")
 internal class WarungKomik(context: MangaLoaderContext) :
 	MangaReaderParser(context, MangaParserSource.WARUNGKOMIK, "warungkomik.com", pageSize = 20, searchPageSize = 10) {

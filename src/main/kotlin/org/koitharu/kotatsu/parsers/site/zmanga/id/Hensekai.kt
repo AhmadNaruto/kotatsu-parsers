@@ -8,7 +8,7 @@ import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.zmanga.ZMangaParser
 import java.util.*
 
-@Broken("Site is online but parser is broken — layout/API changed, needs rewrite")
+@Broken
 @MangaSourceParser("HENSEKAI", "Hensekai", "id", ContentType.HENTAI)
 internal class Hensekai(context: MangaLoaderContext) :
 	ZMangaParser(context, MangaParserSource.HENSEKAI, "hensekai.com") {

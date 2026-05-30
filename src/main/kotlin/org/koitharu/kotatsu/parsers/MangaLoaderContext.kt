@@ -75,4 +75,25 @@ public abstract class MangaLoaderContext {
 		width: Int,
 		height: Int,
 	): Bitmap
+
+	/**
+	 * Capture WebView URLs matching the given pattern
+	 */
+	public open suspend fun captureWebViewUrls(
+		pageUrl: String,
+		urlPattern: Regex,
+		timeout: Long,
+	): List<String> {
+		throw UnsupportedOperationException("WebView URL capturing is not supported")
+	}
+
+	/**
+	 * Intercept WebView requests matching the configuration
+	 */
+	public open suspend fun interceptWebViewRequests(
+		url: String,
+		config: org.koitharu.kotatsu.parsers.webview.InterceptionConfig,
+	): List<org.koitharu.kotatsu.parsers.webview.InterceptedRequest> {
+		throw UnsupportedOperationException("WebView request interception is not supported")
+	}
 }

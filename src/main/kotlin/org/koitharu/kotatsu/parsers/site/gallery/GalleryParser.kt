@@ -2,7 +2,7 @@ package org.koitharu.kotatsu.parsers.site.gallery
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.PagedMangaParser
+import org.koitharu.kotatsu.parsers.core.AbstractMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -12,8 +12,7 @@ internal abstract class GalleryParser(
 	context: MangaLoaderContext,
 	source: MangaParserSource,
 	domain: String,
-	pageSize: Int = 20,
-) : PagedMangaParser(context, source, pageSize) {
+) : AbstractMangaParser(context, source) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 
@@ -32,7 +31,7 @@ internal abstract class GalleryParser(
 
 	override suspend fun getFilterOptions(): MangaListFilterOptions = MangaListFilterOptions()
 
-	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+	override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = urlBuilder().apply {
 			when {
 				!filter.query.isNullOrEmpty() -> addQueryParameter("search", filter.query)
@@ -40,10 +39,18 @@ internal abstract class GalleryParser(
 				order == SortOrder.POPULARITY -> addPathSegment("hot")
 			}
 
-			addQueryParameter("start", (page*pageSize).toString())
+			addQueryParameter("start", offset.toString())
 		}.build()
 
 		val content = webClient.httpGet(url).parseHtml()
+		val currentPage = content.selectFirst("a.pagination-link.is-current")?.text()?.toIntOrNull()
+		val titlePage = content.selectFirst("head > title")?.text()
+			?.substringAfter("page ", "")
+			?.substringBefore(" ", "")
+			?.toIntOrNull()
+
+		if (titlePage != null && currentPage != titlePage) return emptyList()
+
 		return content.select("div.items-row").map { el ->
 			val titleEl = el.selectFirstOrThrow("div.page-header a.item-link")
 			val relUrl = titleEl.attrOrThrow("href")

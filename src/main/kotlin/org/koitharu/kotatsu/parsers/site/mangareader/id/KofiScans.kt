@@ -4,7 +4,7 @@ import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.mangareader.MangaReaderParser
-import java.util.Locale
+import java.util.*
 
 @MangaSourceParser("KOFISCANS", "KofiScans", "id")
 internal class KofiScans(context: MangaLoaderContext) :

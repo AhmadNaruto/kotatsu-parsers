@@ -10,7 +10,7 @@ import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-@Broken("Site is online but parser is broken — layout/API changed, needs rewrite")
+@Broken
 @MangaSourceParser("MANGAPURE", "MangaPure", "en")
 internal class MangaPure(context: MangaLoaderContext) :
     MadaraParser(context, MangaParserSource.MANGAPURE, "mangapure.net") {

@@ -7,7 +7,7 @@ import org.koitharu.kotatsu.parsers.model.ContentType
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 
-@Broken("Domain hijacked — now serves a JS redirect to spam/ads")
+@Broken
 @MangaSourceParser("YAOIMOBI", "Yaoi.Mobi", "en", ContentType.HENTAI)
 internal class YaoiMobi(context: MangaLoaderContext) :
 	MadaraParser(context, MangaParserSource.YAOIMOBI, "yaoi.mobi") {

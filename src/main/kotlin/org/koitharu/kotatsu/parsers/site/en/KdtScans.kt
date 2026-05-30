@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.parsers.site.en
 
+import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
@@ -35,12 +36,17 @@ import org.koitharu.kotatsu.parsers.util.toTitleCase
 import org.koitharu.kotatsu.parsers.util.urlEncoded
 import java.text.SimpleDateFormat
 import java.util.EnumSet
+import java.util.LinkedHashSet
 
 @MangaSourceParser("KDTSCANS", "KdtScans", "en")
 internal class KdtScans(context: MangaLoaderContext) :
     PagedMangaParser(context, MangaParserSource.KDTSCANS, 20) {
 
     override val configKeyDomain = ConfigKey.Domain("www.silentquill.net")
+
+    override fun getRequestHeaders() = super.getRequestHeaders().newBuilder()
+        .add("Referer", "https://$domain/")
+        .build()
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
         SortOrder.RELEVANCE,
@@ -222,17 +228,25 @@ internal class KdtScans(context: MangaLoaderContext) :
         )
     }
 
+    override suspend fun getRelatedManga(seed: Manga): List<Manga> = emptyList()
+
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-        val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-        return doc.select("#readerarea img").map { img ->
-            val url = img.attr("data-src").ifEmpty { img.src().orEmpty() }
-            MangaPage(
-                id = generateUid(url),
-                url = url,
-                preview = null,
-                source = source,
-            )
+        val fullUrl = chapter.url.toAbsoluteUrl(domain)
+        val doc = webClient.httpGet(fullUrl).parseHtml()
+        val pages = extractPageUrls(doc)
+            .map { pageUrl ->
+                MangaPage(
+                    id = generateUid(pageUrl),
+                    url = pageUrl,
+                    preview = null,
+                    source = source,
+                )
+            }
+
+        if (pages.isEmpty()) {
+            doc.parseFailed("Cannot find chapter pages")
         }
+        return pages
     }
 
     private fun parseStatus(status: String): MangaState? {
@@ -265,5 +279,88 @@ internal class KdtScans(context: MangaLoaderContext) :
                 source = source,
             )
         }
+    }
+
+    private fun extractPageUrls(doc: Document): List<String> {
+        val readerScript = doc.select("script").firstNotNullOfOrNull { script ->
+            script.data().takeIf { it.contains("ts_reader.run(") }
+        }
+        val readerConfig = readerScript?.let(::parseReaderConfig)
+        val fallbackUrls = doc.select("#readerarea img")
+            .mapNotNull { img ->
+                img.attrOrNull("data-src")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: img.src()?.takeIf { it.isNotBlank() }
+            }
+
+        return normalizePageUrls(
+            rawUrls = readerConfig?.first ?: fallbackUrls,
+            isLastChapter = readerConfig?.second ?: false,
+        )
+    }
+
+    private fun parseReaderConfig(scriptData: String): Pair<List<String>, Boolean>? {
+        val jsonText = READER_CONFIG_REGEX.find(scriptData)?.groupValues?.get(1) ?: return null
+        val json = runCatching { JSONObject(jsonText) }.getOrNull() ?: return null
+        val urls = mutableListOf<String>()
+        val sources = json.optJSONArray("sources")
+        if (sources != null) {
+            for (i in 0 until sources.length()) {
+                val sourceItem = sources.optJSONObject(i) ?: continue
+                val images = sourceItem.optJSONArray("images") ?: continue
+                for (j in 0 until images.length()) {
+                    images.optString(j)
+                        .takeIf { it.isNotBlank() }
+                        ?.let(urls::add)
+                }
+            }
+        }
+        return urls to json.optString("nextUrl").isBlank()
+    }
+
+    private fun normalizePageUrls(rawUrls: List<String>, isLastChapter: Boolean): List<String> {
+        val urls = LinkedHashSet<String>(rawUrls.size)
+        var hasCreditsPage = false
+
+        rawUrls.forEach { rawUrl ->
+            val url = rawUrl.trim()
+            if (url.isEmpty()) {
+                return@forEach
+            }
+            val lowercaseUrl = url.lowercase()
+            when {
+                "cdn.asdasdhg.com" !in lowercaseUrl -> return@forEach
+                "readerarea.svg" in lowercaseUrl -> return@forEach
+                "reen_wes.webp" in lowercaseUrl -> return@forEach
+                "credits-page" in lowercaseUrl -> {
+                    hasCreditsPage = true
+                    return@forEach
+                }
+                else -> urls += url
+            }
+        }
+
+        val normalized = urls.toList()
+        if (!isLastChapter || !hasCreditsPage) {
+            return normalized
+        }
+
+        val numberedPages = normalized.map { url ->
+            PAGE_NUMBER_REGEX.find(url.substringAfterLast('/').substringBefore('?'))
+                ?.groupValues
+                ?.get(1)
+                ?.toIntOrNull()
+        }
+        val isSequential = numberedPages.none { it == null } &&
+            numberedPages.mapNotNull { it } == (1..numberedPages.size).toList()
+
+        // SilentQuill latest chapters regularly expose one trailing numbered image in the
+        // serialized reader payload that does not belong to the actual chapter.
+        return if (isSequential && normalized.size > 1) normalized.dropLast(1) else normalized
+    }
+
+    private companion object {
+        val READER_CONFIG_REGEX = Regex("""ts_reader\.run\((\{.*?\})\);?""", RegexOption.DOT_MATCHES_ALL)
+        val PAGE_NUMBER_REGEX = Regex("""^(\d+)_out\.(?:webp|jpg|jpeg|png)$""", RegexOption.IGNORE_CASE)
     }
 }
