@@ -9,7 +9,10 @@ on:
             - 'src/main/kotlin/org/koitharu/kotatsu/parsers/**'
 
 env:
-    D8_PATH: build/libs/plugin.jar
+    D8_PATH: build/libs/usagi-plugin.jar
+
+permissions:
+  contents: write
 
 jobs:
     publish:
@@ -27,7 +30,7 @@ jobs:
             -   name: Set up Java environment 🔧
                 uses: actions/setup-java@b622de1dfa918ecc0ab28f40cd42e3c3752cd6c5 # v5.2.0
                 with:
-                    java-version: '17'
+                    java-version: '21'
                     distribution: 'temurin'
 
             -   name: Set up Gradle environment 📦
@@ -56,10 +59,10 @@ jobs:
             -   name: Upload artifacts 🌐
                 uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
                 with:
-                    repository: mochi-plugins/repository
+                    # repository: mochi-plugins/repository
                     tag_name: ${{ steps.meta.outputs.sha_short }}
                     name: ${{ steps.meta.outputs.sha_short }}
                     body: |
-                        Built from commit [`${{ steps.meta.outputs.sha_short }}`](https://github.com/YakaTeam/kotatsu-parsers/commit/${{ github.sha }})
+                        Built from commit [`${{ steps.meta.outputs.sha_short }}`](https://github.com/AhmadNaruto/kotatsu-parsers/commit/${{ github.sha }})
                     files: ${{ env.D8_PATH }}
-                    token: ${{ secrets.ARTIFACT_REPO_TOKEN }}
+                    token: ${{ secrets.GITHUB_TOKEN }}
