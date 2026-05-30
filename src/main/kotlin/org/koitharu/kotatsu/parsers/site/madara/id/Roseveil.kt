@@ -133,10 +133,11 @@ internal class Roseveil(context: MangaLoaderContext) :
 			return super.parseMangaList(doc)
 		}
 		return items.mapNotNull { item ->
-			val link = item.selectFirst("h3 a") ?: item.selectFirst("a") ?: return@mapNotNull null
+			val link = item.selectFirst("div a") ?: item.selectFirst("a") ?: return@mapNotNull null
 			val href = link.attrAsRelativeUrl("href")
 			val title = link.text().trim().ifEmpty {
-				item.selectFirst(".post-title, .manga-name, h3")?.text().orEmpty()
+				// item.selectFirst(".post-title, .manga-name, h3")?.text().orEmpty()
+				link.selectFirst("img")?.attr("alt").orEmpty()
 			}
 			Manga(
 				id = generateUid(href),
