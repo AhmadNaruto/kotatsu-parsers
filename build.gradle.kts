@@ -67,3 +67,8 @@ dependencies {
 }
 
 tasks.register<ReportGenerateTask>("generateTestsReport")
+
+val copyDependencies = tasks.register<Copy>("copyDependencies") {
+    from(configurations.runtimeClasspath)
+    into(layout.buildDirectory.dir("dependencies"))
+}
