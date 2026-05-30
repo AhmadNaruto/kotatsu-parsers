@@ -57,14 +57,9 @@ internal abstract class MangaWorldParser(
 	}
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-		// Handle UPDATED sort without filters - use homepage
-		val noQuery = filter.query.isNullOrBlank()
-			&& filter.tags.isEmpty()
-			&& filter.states.isEmpty()
-			&& filter.types.isEmpty()
-			&& filter.year == 0
 
-		if (order == SortOrder.UPDATED && noQuery) {
+		// Handle UPDATED sort without filters - use homepage
+		if (order == SortOrder.UPDATED && filter.query == null && filter.tags.isEmpty() && filter.states.isEmpty() && filter.types.isEmpty() && filter.year == 0) {
 			return parseMangaList(webClient.httpGet("https://$domain/?page=$page").parseHtml())
 		}
 

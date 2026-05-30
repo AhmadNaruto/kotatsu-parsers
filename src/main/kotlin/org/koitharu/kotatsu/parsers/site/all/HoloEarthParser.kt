@@ -3,28 +3,18 @@ package org.koitharu.kotatsu.parsers.site.all
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.SinglePageMangaParser
-import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.model.MangaChapter
-import org.koitharu.kotatsu.parsers.model.MangaListFilter
-import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
-import org.koitharu.kotatsu.parsers.model.MangaListFilterOptions
-import org.koitharu.kotatsu.parsers.model.MangaPage
-import org.koitharu.kotatsu.parsers.model.MangaParserSource
-import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
-import org.koitharu.kotatsu.parsers.model.SortOrder
+import org.koitharu.kotatsu.parsers.core.PagedMangaParser
+import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.generateUid
 import org.koitharu.kotatsu.parsers.util.parseHtml
-import org.koitharu.kotatsu.parsers.util.parseSafe
 import org.koitharu.kotatsu.parsers.util.selectFirstOrThrow
-import org.koitharu.kotatsu.parsers.util.urlBuilder
+import org.koitharu.kotatsu.parsers.util.parseSafe
 import java.text.SimpleDateFormat
-import java.util.EnumSet
 import java.util.Locale
 
 @MangaSourceParser("HOLOEARTH", "HoloEarth")
 internal class HoloEarthParser(context: MangaLoaderContext) :
-    SinglePageMangaParser(context, MangaParserSource.HOLOEARTH) {
+    PagedMangaParser(context, MangaParserSource.HOLOEARTH, 3) {
 
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain("holoearth.com")
@@ -34,9 +24,7 @@ internal class HoloEarthParser(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.NEWEST,
-	)
+	override val availableSortOrders: Set<SortOrder> = setOf(SortOrder.NEWEST)
 
 	override val filterCapabilities: MangaListFilterCapabilities
         get() = MangaListFilterCapabilities(
@@ -51,16 +39,23 @@ internal class HoloEarthParser(context: MangaLoaderContext) :
         ),
 	)
 
-	override suspend fun getList(order: SortOrder, filter: MangaListFilter): List<Manga> {
-		val url = urlBuilder().apply {
-			when (filter.locale) {
-				Locale("en") -> addPathSegment("en")
-				Locale("id") -> addPathSegment("id")
-				else -> {}
-			}
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		val url = buildString {
+			append("https://$domain")
 
-			addPathSegments("/alt/holonometria/manga")
-		}.build()
+			filter.locale?.let {
+                append(
+                    when (it) {
+                        Locale("en") -> "/en"
+						Locale.JAPANESE -> ""
+                        Locale("id") -> "/id"
+                        else -> "" // default
+                    }
+                )
+            }
+
+			append("/alt/holonometria/manga")
+		}
 
 		val doc = webClient.httpGet(url).parseHtml()
 		val root = doc.body().selectFirstOrThrow(".manga__list")
@@ -103,7 +98,7 @@ internal class HoloEarthParser(context: MangaLoaderContext) :
 			val url = li.selectFirstOrThrow(".manga-detail__list-link").attr("href")
 			val title = li.selectFirstOrThrow(".manga-detail__list-title").text()
 			val dateStr = li.selectFirstOrThrow(".manga-detail__list-date").text()
-			val uploadDate = dateFormat.parseSafe(dateStr)
+			val uploadDate = dateFormat.parseSafe(dateStr) ?: 0L
 			val scanlator = root.selectFirst(".manga-detail__person")?.text()
 
 			MangaChapter(

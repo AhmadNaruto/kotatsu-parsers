@@ -17,6 +17,7 @@ internal class KomikDewasa(context: MangaLoaderContext) :
 		pageSize = 20,
 		searchPageSize = 10,
 	) {
+	override val listUrl = "/komik"
 	override val sourceLocale: Locale = Locale.ENGLISH
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = super.filterCapabilities.copy(

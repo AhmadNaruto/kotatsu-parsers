@@ -6,7 +6,6 @@ import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
@@ -17,8 +16,8 @@ internal class Multporn(context: MangaLoaderContext) :
     override val configKeyDomain = ConfigKey.Domain("multporn.net")
 
     override fun getRequestHeaders(): Headers = Headers.Builder()
-        .add(CommonHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36")
-		.add(CommonHeaders.CONTENT_TYPE, "application/x-www-form-urlencoded; charset=UTF-8")
+        .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36")
+		.add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 		.build()
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -32,7 +31,7 @@ internal class Multporn(context: MangaLoaderContext) :
         get() = MangaListFilterCapabilities(
             isSearchSupported = true,
         )
-
+    
     init {
 		setFirstPage(0)
 	}
@@ -82,7 +81,7 @@ internal class Multporn(context: MangaLoaderContext) :
                     append("&page=0,")
                     append(page)
                 }
-
+                
                 else -> {
                     append("/new")
                     append("?type=")
@@ -98,7 +97,7 @@ internal class Multporn(context: MangaLoaderContext) :
 						}
 					} else append("All")
 
-
+                    
                     filter.locale?.let {
                         append("&language=")
                         append(
@@ -114,7 +113,7 @@ internal class Multporn(context: MangaLoaderContext) :
                     }
 
                     append("&field_user_discription_value=All")
-
+                    
                     append("&sort_by=")
 					append(
 						when (order) {
@@ -125,7 +124,7 @@ internal class Multporn(context: MangaLoaderContext) :
                             else -> "created&sort_order=DESC" // default
 						}
 					)
-
+                    
                     append("&undefined=Apply")
                     append("&page=$page")
                 }
@@ -159,7 +158,7 @@ internal class Multporn(context: MangaLoaderContext) :
                 parseUnlabelledAuthorNames(doc)).distinct()
 
         val tags = listOf("Tags", "Section", "Characters")
-            .flatMap { type ->
+            .flatMap { type -> 
                 doc.select(".field:has(.field-label:contains($type:)) .links a").map { it.text() }
             }
             .distinct()
@@ -202,7 +201,7 @@ internal class Multporn(context: MangaLoaderContext) :
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-        return doc.select(".jb-image img").map { img ->
+        return doc.select(".jb-image img").mapIndexed { i, img ->
             val url = img.attrAsAbsoluteUrl("src")
                 .replace("/styles/juicebox_2k/public", "")
                 .substringBefore("?")

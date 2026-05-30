@@ -6,7 +6,7 @@ import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.zeistmanga.ZeistMangaParser
 
-@Broken("Domain has no DNS records — site is gone")
+@Broken
 @MangaSourceParser("ASUPANKOMIK", "AsupanKomik", "id")
 internal class AsupanKomik(context: MangaLoaderContext) :
 	ZeistMangaParser(context, MangaParserSource.ASUPANKOMIK, "www.asupankomik.my.id")

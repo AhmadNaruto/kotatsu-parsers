@@ -9,7 +9,6 @@ import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getIntOrDefault
 import org.koitharu.kotatsu.parsers.util.json.getLongOrDefault
@@ -52,8 +51,8 @@ internal class Koharu(context: MangaLoaderContext) :
 	}
 
 	override fun getRequestHeaders() = super.getRequestHeaders().newBuilder()
-		.add(CommonHeaders.REFERER, "https://$domain/")
-		.add(CommonHeaders.ORIGIN, "https://$domain")
+		.add("referer", "https://$domain/")
+		.add("origin", "https://$domain")
 		.build()
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(

@@ -21,7 +21,6 @@ import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.model.YEAR_UNKNOWN
-import org.koitharu.kotatsu.parsers.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.site.galleryadults.GalleryAdultsParser
 import org.koitharu.kotatsu.parsers.util.attrAsRelativeUrl
 import org.koitharu.kotatsu.parsers.util.generateUid
@@ -45,7 +44,7 @@ internal class HentaiRead(context: MangaLoaderContext) :
 
 	override fun getRequestHeaders(): Headers {
 		return super.getRequestHeaders().newBuilder()
-			.add(CommonHeaders.REFERER, "https://$domain/")
+			.add("referer", "https://$domain/")
 			.build()
 
 	}

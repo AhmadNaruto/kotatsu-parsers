@@ -41,12 +41,7 @@ internal abstract class LilianaParser(
 
 	override suspend fun getFilterOptions(): MangaListFilterOptions = MangaListFilterOptions(
 		availableTags = getAvailableTags(),
-		availableStates = EnumSet.of(
-			MangaState.ONGOING,
-			MangaState.FINISHED,
-			MangaState.PAUSED,
-			MangaState.ABANDONED
-		),
+		availableStates = setOf(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED),
 	)
 
 	override val filterCapabilities: MangaListFilterCapabilities

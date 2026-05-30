@@ -8,8 +8,8 @@ import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.mangareader.MangaReaderParser
 
 @MangaSourceParser("LUVYAA", "Luvyaa", "id", ContentType.HENTAI)
-internal class Luvyaa(context: MangaLoaderContext) :
-	MangaReaderParser(context, MangaParserSource.LUVYAA, "v2.luvyaa.co", 20, 10) {
+internal class Luvyaar(context: MangaLoaderContext) :
+	MangaReaderParser(context, MangaParserSource.LUVYAA, "v4.luvyaa.co", pageSize = 20, searchPageSize = 10) {
 	override val datePattern = "MMM d, yyyy"
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = super.filterCapabilities.copy(
