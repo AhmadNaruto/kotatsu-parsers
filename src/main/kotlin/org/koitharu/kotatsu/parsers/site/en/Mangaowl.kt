@@ -14,7 +14,7 @@ import org.koitharu.kotatsu.parsers.util.json.mapJSON
 import java.text.SimpleDateFormat
 import java.util.*
 
-@Broken("Domain parked — landing page only, no manga content")
+@Broken
 @MangaSourceParser("MANGAOWL", "MangaOwl.to", "en")
 internal class Mangaowl(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.MANGAOWL, pageSize = 24) {

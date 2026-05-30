@@ -7,7 +7,7 @@ import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.mangareader.MangaReaderParser
 
-@Broken("Site is online but parser is broken — layout/API changed, needs rewrite")
+@Broken
 @MangaSourceParser("KOMIKAV", "KomikAv", "id")
 internal class KomikAvParser(context: MangaLoaderContext) :
 	MangaReaderParser(context, MangaParserSource.KOMIKAV, "komikav.net", pageSize = 20, searchPageSize = 10) {

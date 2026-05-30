@@ -23,7 +23,6 @@ import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
 import org.koitharu.kotatsu.parsers.model.SortOrder
-import org.koitharu.kotatsu.parsers.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.util.attrAsAbsoluteUrl
 import org.koitharu.kotatsu.parsers.util.attrAsRelativeUrl
 import org.koitharu.kotatsu.parsers.util.await
@@ -60,8 +59,8 @@ internal abstract class NatsuParser(
     }
 
     override fun getRequestHeaders() = super.getRequestHeaders().newBuilder()
-        .add(CommonHeaders.REFERER, "https://$domain/")
-        .add(CommonHeaders.ORIGIN, "https://$domain")
+        .add("Referer", "https://$domain/")
+        .add("Origin", "https://$domain")
         .build()
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -94,15 +93,15 @@ internal abstract class NatsuParser(
     private var nonce: String? = null
 
     private suspend fun getNonce(): String {
-		val headers = Headers.Builder()
-			.add(CommonHeaders.USER_AGENT, config[userAgentKey])
-			.build()
+        val headers = Headers.Builder()
+            .add("User-Agent", config[userAgentKey])
+            .build()
 
         if (nonce == null) {
             val json = webClient.httpGet(
-				"https://${domain}/wp-admin/admin-ajax.php?type=search_form&action=get_nonce",
-				headers
-			)
+                "https://${domain}/wp-admin/admin-ajax.php?type=search_form&action=get_nonce",
+                headers
+            )
             val html = json.parseHtml()
             val nonceValue = html.select("input[name=search_nonce]").attr("value")
             nonce = nonceValue
@@ -308,61 +307,61 @@ internal abstract class NatsuParser(
         )
     }
 
-	protected open suspend fun loadChapters(
-		mangaId: String,
-		mangaAbsoluteUrl: String,
-	): List<MangaChapter> {
-		val headers = Headers.headersOf(
-			"HX-Request", "true",
-			"HX-Target", "chapter-list",
-			"HX-Trigger", "chapter-list",
-			"HX-Current-URL", mangaAbsoluteUrl,
-			CommonHeaders.REFERER, mangaAbsoluteUrl,
-		)
+    protected open suspend fun loadChapters(
+        mangaId: String,
+        mangaAbsoluteUrl: String,
+    ): List<MangaChapter> {
+        val headers = Headers.headersOf(
+            "HX-Request", "true",
+            "HX-Target", "chapter-list",
+            "HX-Trigger", "chapter-list",
+            "HX-Current-URL", mangaAbsoluteUrl,
+            "Referer", mangaAbsoluteUrl,
+        )
 
-		return buildList {
-			for (page in 1..50) {
-				val url = urlBuilder()
-					.addPathSegment("wp-admin")
-					.addPathSegment("admin-ajax.php")
-					.addQueryParameter("manga_id", mangaId)
-					.addQueryParameter("page", page.toString())
-					.addQueryParameter("action", "chapter_list")
+        return buildList {
+            for (page in 1..50) {
+                val url = urlBuilder()
+                    .addPathSegment("wp-admin")
+                    .addPathSegment("admin-ajax.php")
+                    .addQueryParameter("manga_id", mangaId)
+                    .addQueryParameter("page", page.toString())
+                    .addQueryParameter("action", "chapter_list")
 
-				// Trying to force stop when chapterElements not exist
-				val chapterElements = try {
-					webClient.httpGet(url.build(), headers).parseHtml()
-				} catch (e: HttpStatusException) {
-					if (e.statusCode == 520) {
-						break
-					} else {
-						throw e
-					}
-				}
+                // Trying to force stop when chapterElements not exist
+                val chapterElements = try {
+                    webClient.httpGet(url.build(), headers).parseHtml()
+                } catch (e: HttpStatusException) {
+                    if (e.statusCode == 520) {
+                        break
+                    } else {
+                        throw e
+                    }
+                }
 
-				val response = chapterElements.select("div#chapter-list > div[data-chapter-number]")
-				if (response.isEmpty()) break
+                val response = chapterElements.select("div#chapter-list > div[data-chapter-number]")
+                if (response.isEmpty()) break
 
-				// Mapping
-				response.mapNotNullTo(this) { element ->
-					val a = element.selectFirst("a") ?: return@mapNotNullTo null
-					val href = a.attrAsRelativeUrl("href").takeIf { it.isNotBlank() } ?: return@mapNotNullTo null
+                // Mapping
+                response.mapNotNullTo(this) { element ->
+                    val a = element.selectFirst("a") ?: return@mapNotNullTo null
+                    val href = a.attrAsRelativeUrl("href").takeIf { it.isNotBlank() } ?: return@mapNotNullTo null
 
-					MangaChapter(
-						id = generateUid(href),
-						title = element.selectFirst("div.font-medium span")?.text() ?: "",
-						url = href,
-						number = element.attr("data-chapter-number").toFloatOrNull() ?: -1f,
-						volume = 0,
-						scanlator = null,
-						uploadDate = parseDate(element.selectFirst("time")?.text()),
-						branch = null,
-						source = source,
-					)
-				}
-			}
-		}.reversed()
-	}
+                    MangaChapter(
+                        id = generateUid(href),
+                        title = element.selectFirst("div.font-medium span")?.text() ?: "",
+                        url = href,
+                        number = element.attr("data-chapter-number").toFloatOrNull() ?: -1f,
+                        volume = 0,
+                        scanlator = null,
+                        uploadDate = parseDate(element.selectFirst("time")?.text()),
+                        branch = null,
+                        source = source,
+                    )
+                }
+            }
+        }.reversed()
+    }
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
@@ -482,13 +481,13 @@ internal abstract class NatsuParser(
         val requestBuilder = Request.Builder()
             .url(url)
             .post(body.build())
-			.addHeader(CommonHeaders.USER_AGENT, config[userAgentKey])
-            .addHeader(CommonHeaders.REFERER, "https://${domain}/advanced-search/")
-            .addHeader(CommonHeaders.ORIGIN, "https://${domain}")
+            .addHeader("User-Agent", config[userAgentKey])
+            .addHeader("Referer", "https://${domain}/advanced-search/")
+            .addHeader("Origin", "https://${domain}")
 
         if (extraHeaders != null) {
             for (name in extraHeaders.names()) {
-                if (!name.equals(CommonHeaders.CONTENT_TYPE, ignoreCase = true)) {
+                if (!name.equals("Content-Type", ignoreCase = true)) {
                     val value = extraHeaders[name] ?: continue
                     requestBuilder.addHeader(name, value)
                 }

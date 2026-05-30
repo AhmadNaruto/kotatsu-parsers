@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.parsers.site.all
 
 import androidx.collection.arraySetOf
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
@@ -11,7 +13,6 @@ import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
 import java.util.EnumSet
-import java.util.Locale
 
 internal abstract class WebtoonsParser(
 	context: MangaLoaderContext,
@@ -38,7 +39,7 @@ internal abstract class WebtoonsParser(
 		ConfigKey.UserAgent("Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36")
 
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
-		availableTags = availableTags,
+		availableTags = availableTags(),
 	)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -57,8 +58,8 @@ internal abstract class WebtoonsParser(
 			else -> tag
 		}
 
-	private suspend fun fetchEpisodes(titleNo: Long): List<MangaChapter> {
-		val url = "https://$mobileApiDomain/api/v1/webtoon/$titleNo/episodes?pageSize=99999"
+	private suspend fun fetchEpisodes(titleNo: Long, type: String): List<MangaChapter> {
+		val url = "https://$mobileApiDomain/api/v1/$type/$titleNo/episodes?pageSize=99999"
 		val json = webClient.httpGet(url).parseJson()
 
 		val episodeList = json.optJSONObject("result")?.optJSONArray("episodeList")
@@ -84,7 +85,7 @@ internal abstract class WebtoonsParser(
 
 	}
 
-	override suspend fun getDetails(manga: Manga): Manga {
+	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
 		val titleNo = manga.url.toLong()
 		val detailsUrl = manga.publicUrl.ifBlank {
 			"https://$domain/$languageCode/drama/placeholder/list?title_no=$titleNo"
@@ -108,7 +109,7 @@ internal abstract class WebtoonsParser(
 		val author = listOf(
 			doc.select("meta[property='com-linewebtoon:webtoon:author']").attr("content"),
 			doc.select(".detail_header .info .author").firstOrNull()?.text(),
-			doc.select(".author_area").firstOrNull()?.ownText()?.trim(),
+			doc.select(".author_area").text(),
 		).firstOrNull { !it.isNullOrBlank() && it != "null" }
 
 		val genreElements = doc.select(".detail_header .info .genre").ifEmpty {
@@ -119,19 +120,16 @@ internal abstract class WebtoonsParser(
 		val dayInfo = doc.select("#_asideDetail p.day_info").text().ifEmpty {
 			doc.select(".day_info").text()
 		}
-		val normalizedDayInfo = dayInfo.uppercase(Locale.ROOT)
 		val state = when {
-			normalizedDayInfo.contains("UP") ||
-				normalizedDayInfo.contains("EVERY") ||
-				normalizedDayInfo.contains("NOUVEAU") ||
-				normalizedDayInfo.contains("TOUS LES") -> MangaState.ONGOING
-			normalizedDayInfo.contains("END") || normalizedDayInfo.contains("COMPLETED") || normalizedDayInfo.contains("TERMINÉ") || normalizedDayInfo.contains("TERMINE") -> MangaState.FINISHED
+			dayInfo.contains("UP") || dayInfo.contains("EVERY") || dayInfo.contains("NOUVEAU") -> MangaState.ONGOING
+			dayInfo.contains("END") || dayInfo.contains("COMPLETED") || dayInfo.contains("TERMINÉ") -> MangaState.FINISHED
 			else -> null
 		}
 
-		val chapters = fetchEpisodes(titleNo)
+		val type = if ("/canvas/" in detailsUrl) "canvas" else "webtoon"
+		val chapters = async { fetchEpisodes(titleNo, type) }.await()
 
-		return Manga(
+		Manga(
 			id = generateUid(titleNo),
 			title = title,
 			altTitles = emptySet(),
@@ -159,7 +157,7 @@ internal abstract class WebtoonsParser(
 		}
 	}
 
-	private val availableTags = arraySetOf(
+	private fun availableTags() = arraySetOf(
 		MangaTag("Action", "action", source),
 		MangaTag("Comedy", "comedy", source),
 		MangaTag("Drama", "drama", source),
@@ -174,11 +172,14 @@ internal abstract class WebtoonsParser(
 		MangaTag("Historical", "historical", source),
 		MangaTag("Mystery", "mystery", source),
 		MangaTag("Superhero", "super_hero", source),
-		MangaTag("Local", "local", source),
 		MangaTag("Heartwarming", "heartwarming", source),
 		MangaTag("Graphic Novel", "graphic_novel", source),
 		MangaTag("Informative", "tiptoon", source),
 	)
+
+	private val genreUrlMap: Map<String, String> = availableTags().associate {
+		it.title.lowercase() to it.key
+	}
 
 	override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val document = when {
@@ -189,8 +190,9 @@ internal abstract class WebtoonsParser(
 
 			filter.tags.isNotEmpty() -> {
 				val selectedGenre = filter.tags.first()
+				val genreUrlPath = genreUrlMap[selectedGenre.key] ?: selectedGenre.key
 				val sortParam = getSortOrderParam(order)
-				val genreUrl = "https://$domain/$languageCode/genres/${selectedGenre.key}?sortOrder=$sortParam"
+				val genreUrl = "https://$domain/$languageCode/genres/$genreUrlPath?sortOrder=$sortParam"
 				webClient.httpGet(genreUrl).parseHtml()
 			}
 
@@ -209,26 +211,20 @@ internal abstract class WebtoonsParser(
 		val selectedGenreForManga = if (filter.tags.isNotEmpty()) filter.tags.first() else null
 
 		return document.select(".webtoon_list li a, .card_wrap .card_item a")
-			.mapNotNull { element -> createMangaFromElementOrNull(element, selectedGenreForManga) }
+			.map { element -> createMangaFromElement(element, source, selectedGenreForManga) }
 			.drop(offset)
 			.take(20)
 	}
 
-	private fun createMangaFromElementOrNull(
+	private fun createMangaFromElement(
 		element: Element,
+		source: MangaParserSource,
 		selectedGenre: MangaTag? = null,
-	): Manga? {
+	): Manga {
 		val href = element.absUrl("href")
-		val titleNo = extractTitleNoFromUrlOrNull(href) ?: return null
-		val imageElement = element.selectFirst("img")
+		val titleNo = extractTitleNoFromUrl(href)
 		val title = element.select(".title, .card_title").text()
-			.ifBlank { imageElement?.attr("alt").orEmpty() }
-		if (title.isBlank()) return null
-		val thumbnailUrl = imageElement?.attr("data-url").orEmpty()
-			.ifBlank { imageElement?.attr("src").orEmpty() }
-		val coverUrl = thumbnailUrl
-			.takeIf { it.isNotBlank() }
-			?.toAbsoluteUrl(staticDomain)
+		val thumbnailUrl = element.select("img").attr("src")
 
 		return Manga(
 			id = generateUid(titleNo),
@@ -238,7 +234,7 @@ internal abstract class WebtoonsParser(
 			publicUrl = href,
 			rating = RATING_UNKNOWN,
 			contentRating = null,
-			coverUrl = coverUrl,
+			coverUrl = thumbnailUrl.toAbsoluteUrl(staticDomain),
 			largeCoverUrl = null,
 			tags = selectedGenre?.let { setOf(it) } ?: emptySet(),
 			authors = emptySet(),
@@ -248,12 +244,9 @@ internal abstract class WebtoonsParser(
 		)
 	}
 
-	private fun extractTitleNoFromUrlOrNull(url: String): Long? {
-		return TITLE_NO_REGEX.find(url)?.groupValues?.getOrNull(1)?.toLongOrNull()
-	}
-
-	private companion object {
-		val TITLE_NO_REGEX = Regex("title_no=(\\d+)")
+	private fun extractTitleNoFromUrl(url: String): Long {
+		return Regex("title_no=(\\d+)").find(url)?.groupValues?.get(1)?.toLong()
+			?: throw ParseException("Could not extract title_no from URL: $url", url)
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {

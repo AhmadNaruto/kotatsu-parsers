@@ -17,7 +17,6 @@ import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.Base64
 import java.util.EnumSet
-import java.util.Locale
 
 internal abstract class MangaReaderParser(
 	context: MangaLoaderContext,
@@ -176,6 +175,7 @@ internal abstract class MangaReaderParser(
 	protected open val selectChapter = "#chapterlist > ul > li"
 	override suspend fun getDetails(manga: Manga): Manga {
 		val docs = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
 		val chapters = docs.select(selectChapter).mapChapters(reversed = true) { index, element ->
 			val url = element.selectFirst("a")?.attrAsRelativeUrlOrNull("href") ?: return@mapChapters null
 			MangaChapter(
@@ -185,19 +185,12 @@ internal abstract class MangaReaderParser(
 				number = index + 1f,
 				volume = 0,
 				scanlator = null,
-				uploadDate = parseChapterDate(element.selectFirst(".chapterdate")?.text()),
+				uploadDate = dateFormat.parseSafe(element.selectFirst(".chapterdate")?.text()),
 				branch = null,
 				source = source,
 			)
 		}
 		return parseInfo(docs, manga, chapters)
-	}
-
-	protected open fun parseChapterDate(date: String?): Long {
-		val sourceDate = SimpleDateFormat(datePattern, sourceLocale).parseSafe(date)
-		if (sourceDate != 0L) return sourceDate
-
-		return SimpleDateFormat(datePattern, Locale.ENGLISH).parseSafe(date)
 	}
 
 	protected open val detailsDescriptionSelector = "div.entry-content"
@@ -315,7 +308,7 @@ internal abstract class MangaReaderParser(
 		val docs = webClient.httpGet(chapterUrl).parseHtml()
 
 		val test = docs.select(selectTestScript)
-		if (test.isEmpty() and !encodedSrc) {
+		if (test.isNullOrEmpty() and !encodedSrc) {
 			return docs.select(selectPage).map { img ->
 				val url = img.requireSrc().toRelativeUrl(domain)
 				MangaPage(
@@ -406,7 +399,7 @@ internal abstract class MangaReaderParser(
 			s.html().takeIf { x -> x.contains("slowAES.decrypt") }
 		} ?: return@runCatchingCancellable null
 		val min = webClient.httpGet("https://$domain/min.js").parseRaw()
-		val res = context.evaluateJs("about:blank", min + "\n\n" + script.replace(Regex("document.cookie\\s*=\\s*"), "return "))
+		val res = context.evaluateJs(min + "\n\n" + script.replace(Regex("document.cookie\\s*=\\s*"), "return "))
 		res?.let {
 			Cookie.parse(baseUri().toHttpUrl(), it)
 		}

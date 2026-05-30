@@ -1,13 +1,16 @@
 package org.koitharu.kotatsu.parsers.site.en
 
+import okhttp3.Interceptor
+import okhttp3.Response
 import org.json.JSONObject
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
 import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.exception.ParseException
 import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.network.CommonHeaders
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.json.getFloatOrDefault
 import org.koitharu.kotatsu.parsers.util.json.getStringOrNull
@@ -22,15 +25,37 @@ internal class BatCave(context: MangaLoaderContext) :
 
 	override val configKeyDomain = ConfigKey.Domain("batcave.biz")
 
-    override fun getRequestHeaders() = super.getRequestHeaders().newBuilder()
-        .add(CommonHeaders.REFERER, "https://$domain/")
-        .build()
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val url = request.url.toString()
+
+        val headersBuilder = request.headers.newBuilder()
+
+        // Set appropriate Referer based on the URL
+        headersBuilder.removeAll("Referer")
+        when {
+            url.contains("readcomicsonline.ru") -> {
+                headersBuilder.add("Referer", "https://readcomicsonline.ru/")
+            }
+            else -> {
+                headersBuilder.add("Referer", "https://$domain/")
+            }
+        }
+
+        val newRequest = request.newBuilder()
+            .headers(headersBuilder.build())
+            .build()
+
+        return chain.proceed(newRequest)
+    }
 
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
+	private val captureAllPattern = Regex(".*")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
+        keys.add(ConfigKey.DisableUpdateChecking(defaultValue = true))
 	}
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
@@ -45,6 +70,137 @@ internal class BatCave(context: MangaLoaderContext) :
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
 		availableTags = availableTags.get(),
 	)
+
+	private suspend fun captureDocument(
+		initialUrl: String,
+		preferredMatch: Regex? = null,
+		timeoutMs: Long = 15000L,
+		allowBrowserAction: Boolean = true,
+	): Document {
+		// Try HTTP first - only use WebView if Cloudflare protection is detected
+		tryHttpDocument(initialUrl)?.let { doc ->
+			return doc
+		}
+
+		// HTTP failed, likely due to Cloudflare protection - try WebView
+		loadDocumentViaWebView(initialUrl)?.let { doc ->
+			return doc
+		}
+
+		val capturedUrls = try {
+			context.captureWebViewUrls(
+				pageUrl = initialUrl,
+				urlPattern = captureAllPattern,
+				timeout = timeoutMs,
+			)
+		} catch (e: Exception) {
+			throw ParseException("Failed to capture webview URLs", initialUrl, e)
+		}
+
+		if (capturedUrls.isEmpty()) {
+			throw ParseException("WebView did not produce any matching requests", initialUrl)
+		}
+
+		val resolvedUrl = preferredMatch?.let { pattern ->
+			capturedUrls.firstOrNull { pattern.containsMatchIn(it) }
+		} ?: capturedUrls.firstOrNull { url ->
+			url.startsWith("https://$domain") || url.startsWith("http://$domain")
+		} ?: capturedUrls.firstOrNull()
+
+		val finalUrl = resolvedUrl ?: initialUrl
+
+		loadDocumentViaWebView(finalUrl)?.let { doc ->
+			return doc
+		}
+
+		if (allowBrowserAction) {
+			context.requestBrowserAction(this, finalUrl)
+			throw ParseException("Browser action requested for Cloudflare bypass", finalUrl)
+		}
+
+		throw ParseException("Failed to load page via webview", finalUrl)
+	}
+
+	private suspend fun tryHttpDocument(url: String): Document? {
+		val response = runCatching { webClient.httpGet(url) }.getOrNull() ?: return null
+		return response.use { res ->
+			val doc = runCatching { res.parseHtml() }.getOrNull() ?: return null
+
+			// Check for successful BatCave content first
+			if (hasValidBatCaveContent(doc)) {
+				return doc
+			}
+
+			// Only reject if it's clearly an active Cloudflare challenge
+			val html = doc.outerHtml()
+			if (isActiveCloudflareChallenge(html)) {
+				return null
+			}
+
+			// If we're not sure, allow the page through
+			doc
+		}
+	}
+
+
+	private suspend fun loadDocumentViaWebView(url: String): Document? {
+		val script = """
+			(() => {
+				return new Promise(resolve => {
+					const finish = () => {
+						resolve(document.documentElement ? document.documentElement.outerHTML : "");
+					};
+					if (document.readyState === "complete") {
+						setTimeout(finish, 200);
+					} else {
+						window.addEventListener("load", () => setTimeout(finish, 200), { once: true });
+					}
+					setTimeout(finish, 3000);
+				});
+			})();
+		""".trimIndent()
+
+		val html = context.evaluateJs(url, script) ?: return null
+		if (html.isBlank()) {
+			return null
+		}
+
+		val doc = Jsoup.parse(html, url)
+
+		// Check for successful BatCave content instead of rejecting Cloudflare
+		if (hasValidBatCaveContent(doc)) {
+			return doc
+		}
+
+		// Only reject if it's clearly an active Cloudflare challenge page
+		if (isActiveCloudflareChallenge(html)) {
+			return null
+		}
+
+		// If we're not sure, allow the page through
+		return doc
+	}
+
+	private fun hasValidBatCaveContent(doc: Document): Boolean {
+		// Check for BatCave-specific content that indicates successful load
+		return doc.select("div.readed.d-flex.short").isNotEmpty() ||
+			doc.select("script:containsData(__DATA__)").isNotEmpty() ||
+			doc.select("script:containsData(__XFILTER__)").isNotEmpty() ||
+			doc.select("h1.serie-title").isNotEmpty() ||
+			doc.title().contains("BatCave", ignoreCase = true)
+	}
+
+	private fun isActiveCloudflareChallenge(html: String): Boolean {
+		if (html.length < 100) {
+			return true
+		}
+		val lower = html.lowercase()
+		// Only reject pages that are clearly active challenge pages
+		return (lower.contains("just a moment") && lower.contains("cloudflare")) ||
+			(lower.contains("checking your browser") && lower.contains("cloudflare")) ||
+			lower.contains("cf-browser-verification") ||
+			lower.contains("cf-chl-opt")
+	}
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val urlBuilder = StringBuilder()
@@ -80,7 +236,7 @@ internal class BatCave(context: MangaLoaderContext) :
 		}
 
 		val fullUrl = urlBuilder.toString().toAbsoluteUrl(domain)
-		val doc = webClient.httpGet(fullUrl).parseHtml()
+		val doc = captureDocument(fullUrl)
 		return doc.select("div.readed.d-flex.short").map { item ->
 			val a = item.selectFirstOrThrow("a.readed__img.img-fit-cover.anim")
 			val titleElement = item.selectFirstOrThrow("h2.readed__title a")
@@ -105,7 +261,7 @@ internal class BatCave(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga {
-		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val doc = captureDocument(manga.url.toAbsoluteUrl(domain))
 
 		val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.US)
 
@@ -176,7 +332,7 @@ internal class BatCave(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+		val doc = captureDocument(chapter.url.toAbsoluteUrl(domain))
 		val data = doc.selectFirst("script:containsData(__DATA__)")?.data()
 			?.substringAfter("=")
 			?.trim()
@@ -198,7 +354,7 @@ internal class BatCave(context: MangaLoaderContext) :
 	}
 
 	private suspend fun fetchTags(): Set<MangaTag> {
-		val doc = webClient.httpGet("https://$domain/comix/").parseHtml()
+		val doc = captureDocument("https://$domain/comix/")
 		val scriptData = doc.selectFirstOrThrow("script:containsData(__XFILTER__)").data()
 
 		val genresJson = scriptData

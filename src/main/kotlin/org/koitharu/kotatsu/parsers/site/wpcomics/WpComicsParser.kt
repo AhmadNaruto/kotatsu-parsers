@@ -27,7 +27,7 @@ internal abstract class WpComicsParser(
 ) : PagedMangaParser(context, source, pageSize) {
 
 	companion object {
-		const val GLOBAL_NETTRUYEN_DOMAIN = "nettruyen4s.com"
+		const val GLOBAL_NETTRUYEN_DOMAIN = "nettruyen1905.com"
 	}
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
@@ -340,21 +340,11 @@ internal abstract class WpComicsParser(
 		}
 	}
 
-	// need a better function to handle them
 	protected fun Element.findImageUrl(): String? {
-		val priorityKeys = listOf(
-			"data-src",
-			"data-original",
-			"data-original-src",
-			"src",
-		)
-		for (key in priorityKeys) {
-			val value = attr(key).trim()
-			if (value.startsWith("http")) {
-				return value
-			}
+		val attrs = attributes().filter { attr ->
+			attr.value.toHttpUrlOrNull() != null
 		}
-
-		return null
+		// src attribute should have a lowest priority
+		return attrs.maxByOrNull { it.key != "src" }?.value
 	}
 }
