@@ -206,7 +206,7 @@ internal abstract class ComicasoParser(
 			)
 		}
 		// index.json urutan terbaru di atas, Kotatsu butuh ascending
-		chapters.reverse()
+		// chapters.reverse()
 
 		return manga.copy(
 			title = title,
