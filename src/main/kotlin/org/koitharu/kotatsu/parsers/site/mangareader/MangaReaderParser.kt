@@ -163,7 +163,7 @@ internal abstract class MangaReaderParser(
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				rating = rating,
 				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
-				coverUrl = it.selectFirst(selectMangaListImg)?.src(),
+				coverUrl = it.selectFirst(selectMangaListImg)?.attr("src"),
 				tags = emptySet(),
 				state = null,
 				authors = emptySet(),

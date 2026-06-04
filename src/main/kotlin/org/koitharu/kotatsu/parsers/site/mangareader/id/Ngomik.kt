@@ -10,4 +10,6 @@ import java.util.*
 internal class Ngomik(context: MangaLoaderContext) :
 	MangaReaderParser(context, MangaParserSource.NGOMIK, "id.ngomik.cloud", pageSize = 20, searchPageSize = 5) {
 	override val sourceLocale: Locale = Locale.ENGLISH
+	override val selectMangaList = ".postbody .listupd .bs .bsx a"
+	override val selectMangaListImg = "img.wp-post-image"
 }
