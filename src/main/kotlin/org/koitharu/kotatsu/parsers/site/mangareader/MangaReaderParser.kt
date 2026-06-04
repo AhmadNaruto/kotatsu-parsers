@@ -272,13 +272,15 @@ internal abstract class MangaReaderParser(
 			|| docs.selectFirst(".postbody .alr") != null
 
 		val title = docs.selectFirst("div.infox h1.entry-title")?.text()
+		/*
 			?: docs.selectFirst("h1")?.text()
 			?: docs.selectFirst(".entry-title")?.text()
 			?: docs.selectFirst(".seriestucontent h1")?.text()
 			?: docs.selectFirst(".postbody h1")?.text()
 			?: docs.selectFirst("title")?.text()?.substringBefore(" - ")?.trim()
+		*/
 			?: manga.title
-
+			
 		return manga.copy(
 			title = title,
 			description = docs.selectFirst(detailsDescriptionSelector)?.text(),
