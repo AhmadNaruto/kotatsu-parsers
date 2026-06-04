@@ -8,6 +8,8 @@ import org.koitharu.kotatsu.parsers.model.ContentType
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
+import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
+import org.koitharu.kotatsu.parsers.model.MangaListFilterOptions
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
@@ -18,8 +20,9 @@ import org.koitharu.kotatsu.parsers.util.generateUid
 import org.koitharu.kotatsu.parsers.util.json.mapJSON
 import org.koitharu.kotatsu.parsers.util.json.mapJSONNotNull
 import org.koitharu.kotatsu.parsers.util.parseJson
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import org.koitharu.kotatsu.parsers.util.urlBuilder
-import org.koitharu.kotatsu.parsers.util.urlEncoded
 import java.util.EnumSet
 import java.util.Locale
 
@@ -41,6 +44,54 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 		SortOrder.POPULARITY,
 		SortOrder.POPULARITY_TODAY,
 		SortOrder.POPULARITY_WEEK
+	)
+
+	override val filterCapabilities = MangaListFilterCapabilities(
+		isMultipleTagsSupported = true,
+		isTagsExclusionSupported = true,
+		isSearchSupported = true,
+		isSearchWithFiltersSupported = true,
+		isOriginalLocaleSupported = true,
+	)
+
+	private val nhConfig = suspendLazy {
+		runCatchingCancellable {
+			val response = webClient.httpGet("https://$domain/$apiSuffix/config").parseJson()
+			val images = response.getJSONArray("image_servers")
+			val thumbs = response.getJSONArray("thumb_servers")
+			val imageServers = (0 until images.length()).map { i -> images.getString(i) }
+			val thumbServers = (0 until thumbs.length()).map { i -> thumbs.getString(i) }
+			imageServers to thumbServers
+		}.getOrElse {
+			(1..4).map { "https://i$it.$domain" } to (1..4).map { "https://t$it.$domain" }
+		}
+	}
+
+	private suspend fun imageServer(): String = nhConfig.get().first.random()
+	private suspend fun thumbServer(): String = nhConfig.get().second.random()
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = setOf(
+			MangaTag("Sole Female", "sole-female", source),
+			MangaTag("Sole Male", "sole-male", source),
+			MangaTag("Stockings", "stockings", source),
+			MangaTag("Group", "group", source),
+			MangaTag("Schoolgirl Uniform", "schoolgirl-uniform", source),
+			MangaTag("Anal", "anal", source),
+			MangaTag("Nakadashi", "nakadashi", source),
+			MangaTag("Blowjob", "blowjob", source),
+			MangaTag("Defloration", "defloration", source),
+			MangaTag("Yaoi", "yaoi", source),
+			MangaTag("Yuri", "yuri", source),
+			MangaTag("Glasses", "glasses", source),
+			MangaTag("Bondage", "bondage", source),
+			MangaTag("Big Breasts", "big-breasts", source),
+		),
+		availableLocales = setOf(
+			Locale.ENGLISH,
+			Locale.JAPANESE,
+			Locale.CHINESE,
+		)
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -75,12 +126,13 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 			}
 
 			url.addPathSegment("search")
-			url.addQueryParameter("query", query.urlEncoded())
+			url.addQueryParameter("query", query)
 			url.addQueryParameter("sort", sort)
 			url.addQueryParameter("page", page.toString())
 		}
 
 		val json = webClient.httpGet(url.build()).parseJson()
+		val server = thumbServer()
 		return json.optJSONArray("result").mapJSON {
 			val id = it.getInt("id")
 			val title = it.extractTitle()
@@ -92,7 +144,7 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 				publicUrl = "https://$domain/g/$id/",
 				rating = RATING_UNKNOWN,
 				contentRating = ContentRating.ADULT,
-				coverUrl = "https://t.$domain/${it.getThumbnailPath()}",
+				coverUrl = "$server/${it.getThumbnailPath()}",
 				tags = emptySet(),
 				state = null,
 				authors = emptySet(),
@@ -105,8 +157,11 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 		val id = manga.url.removeSurrounding("/g/", "/")
 		val obj = webClient.httpGet("https://$domain/$apiSuffix/galleries/$id").parseJson()
 		val tags = obj.getJSONArray("tags")
+		val title = obj.extractTitle()
+		val cleanedTitle = title.cleanupTitle().ifEmpty { title }
 
 		return manga.copy(
+			title = cleanedTitle,
 			tags = tags.mapJSON {
 				MangaTag(it.getString("name"), it.getString("slug"), source)
 			}.toSet(),
@@ -114,11 +169,11 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 				it.getString("type") == "artist" }?.getString("name")
 			}.toSet(),
 			description = "Pages: ${obj.optInt("num_pages")}",
-			coverUrl = "https://t.$domain/${obj.getCoverPath()}",
+			coverUrl = "${thumbServer()}/${obj.getCoverPath()}",
 			chapters = listOf(
 				MangaChapter(
 					id = manga.id,
-					title = manga.title,
+					title = cleanedTitle,
 					number = 1f,
 					volume = 0,
 					url = manga.url,
@@ -134,13 +189,15 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val id = chapter.url.removeSurrounding("/g/", "/")
 		val response = webClient.httpGet("https://$domain/$apiSuffix/galleries/$id").parseJson()
+		val server = imageServer()
+		val thumbServer = thumbServer()
 		return response.getJSONArray("pages").mapJSON { page ->
 			val path = page.getString("path")
 			MangaPage(
 				id = generateUid(path),
-				url = "https://i.$domain/$path",
+				url = "$server/$path",
 				preview = page.optString("thumbnail").takeIf { it.isNotBlank() }
-					?.let { "https://t.$domain/$it" },
+					?.let { "$thumbServer/$it" },
 				source = source,
 			)
 		}
@@ -168,11 +225,4 @@ internal class NHentaiParser(context: MangaLoaderContext) :
 		tags.forEach { append("tag:\"${it.key}\" ") }
 		language?.let { append("language:\"${it.toLanguagePath()}\" ") }
 	}.trim()
-
-	override fun Locale.toLanguagePath(): String = when (this) {
-		Locale.ENGLISH -> "english"
-		Locale.JAPANESE -> "japanese"
-		Locale.CHINESE -> "chinese"
-		else -> language
-	}
 }

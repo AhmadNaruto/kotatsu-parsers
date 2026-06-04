@@ -5,6 +5,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.network.CommonHeaders
 
 private const val HEADER_REFERER = CommonHeaders.REFERER
 
