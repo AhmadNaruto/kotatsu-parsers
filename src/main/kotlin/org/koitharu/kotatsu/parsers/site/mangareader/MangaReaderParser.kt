@@ -177,10 +177,10 @@ internal abstract class MangaReaderParser(
 		val docs = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
 		val chapters = docs.select(selectChapter).mapChapters(reversed = true) { index, element ->
-			val url = element.selectFirst("a")?.attrAsRelativeUrlOrNull("href") ?: return@mapChapters null
+			val url = element.selectFirst("a")?.attrAsRelativeUrl("href") ?: return@mapChapters null
 			MangaChapter(
 				id = generateUid(url),
-				title = element.selectFirst(".chapternum")?.textOrNull(),
+				title = element.selectFirst("a span.chapternum")?.textOrNull(),
 				url = url,
 				number = index + 1f,
 				volume = 0,
@@ -272,13 +272,15 @@ internal abstract class MangaReaderParser(
 			|| docs.selectFirst(".postbody .alr") != null
 
 		val title = docs.selectFirst("div.infox h1.entry-title")?.text()
+		/*
 			?: docs.selectFirst("h1")?.text()
 			?: docs.selectFirst(".entry-title")?.text()
 			?: docs.selectFirst(".seriestucontent h1")?.text()
 			?: docs.selectFirst(".postbody h1")?.text()
 			?: docs.selectFirst("title")?.text()?.substringBefore(" - ")?.trim()
+		*/
 			?: manga.title
-
+			
 		return manga.copy(
 			title = title,
 			description = docs.selectFirst(detailsDescriptionSelector)?.text(),
