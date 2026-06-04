@@ -163,7 +163,7 @@ internal abstract class MangaReaderParser(
 				publicUrl = a.attrAsAbsoluteUrl("href"),
 				rating = rating,
 				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
-				coverUrl = it.selectFirst(selectMangaListImg)?.src(),
+				coverUrl = it.selectFirst(selectMangaListImg)?.attr("src"),
 				tags = emptySet(),
 				state = null,
 				authors = emptySet(),
@@ -271,7 +271,7 @@ internal abstract class MangaReaderParser(
 			|| docs.selectFirst(".info-right .alr") != null
 			|| docs.selectFirst(".postbody .alr") != null
 
-		val title = docs.selectFirst("h1.entry-title")?.text()
+		val title = docs.selectFirst("div.infox h1.entry-title")?.text()
 			?: docs.selectFirst("h1")?.text()
 			?: docs.selectFirst(".entry-title")?.text()
 			?: docs.selectFirst(".seriestucontent h1")?.text()
