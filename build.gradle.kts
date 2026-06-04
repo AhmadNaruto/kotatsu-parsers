@@ -35,7 +35,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 }
 
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(21)
     explicitApiWarning()
     sourceSets["main"].kotlin.srcDirs("build/generated/ksp/main/kotlin")
 }
